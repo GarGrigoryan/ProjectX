@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "988827907005",
+    "firebase_url": "https://airanalyzer-default-rtdb.europe-west1.firebasedatabase.app",
+    "project_id": "airanalyzer",
+    "storage_bucket": "airanalyzer.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:988827907005:android:4051b4b575dca2596fd8d4",
+        "android_client_info": {
+          "package_name": "com.garik.airanalyzer"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCrfA7WV2u84rcsmtlEf8BbrRQng659SN4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

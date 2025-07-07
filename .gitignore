@@ -1,0 +1,17 @@
+.dart_tool/
+/.packages
+.pub/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.idea/
+*.iml
+*.log
+local.properties
+*.keystore
+Pods/
+*.xcworkspace
+*.xcuserdata
+*.lock
+DerivedData/
+.vscode/
