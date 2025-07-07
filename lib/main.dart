@@ -56,6 +56,7 @@ class _BluetoothDeviceListScreenState extends State<BluetoothDeviceListScreen> {
   @override
   void initState() {
     super.initState();
+    _requestPermissions();
     startDiscovery();
   }
 
@@ -83,6 +84,16 @@ class _BluetoothDeviceListScreenState extends State<BluetoothDeviceListScreen> {
       });
     });
   }
+
+  Future<void> _requestPermissions() async {
+  if (Platform.isAndroid) {
+    await [
+      Permission.bluetoothScan,
+      Permission.bluetoothConnect,
+      Permission.locationWhenInUse,
+    ].request();
+  }
+}
 
   @override
   void dispose() {
@@ -848,7 +859,6 @@ Future<void> _connectToDevice(BluetoothDevice device) async {
   }
 
   List<BluetoothDiscoveryResult> _scanResults = [];
-BluetoothConnection? _bluetoothConnection;
 bool _scanning = false;
 
 Future<void> _startBluetoothScan() async {
