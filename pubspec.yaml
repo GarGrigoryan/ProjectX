@@ -33,7 +33,7 @@ dependencies:
   firebase_core: 2.17.0
   firebase_database: 10.2.4
   firebase_auth: ^4.6.3
-  permission_handler: ^10.4.0
+  permission_handler: ^11.0.1
   flutter_local_notifications: ^15.1.1 #14.1.5 er
   timeago: ^3.5.0
   workmanager: ^0.5.1  # For background tasks

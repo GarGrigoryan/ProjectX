@@ -763,6 +763,21 @@ bool get _isAppActive {
   }
 }
 
+Future<void> _connectToDevice(BluetoothDevice device) async {
+  try {
+    final connection = await BluetoothConnection.toAddress(device.address);
+    print('Connected to ${device.name}');
+    setState(() {
+      _bluetoothConnection = connection;
+      status = 'Connected to ${device.name}';
+    });
+  } catch (e) {
+    print("Connection failed: $e");
+    setState(() => status = 'Failed to connect');
+  }
+}
+
+
   void _setupFirebaseListeners() {
     // Settings listener
     dbRef.child('devices/$deviceId/settings').onValue.listen((event) {
@@ -831,6 +846,37 @@ bool get _isAppActive {
       });
     }
   }
+
+  List<BluetoothDiscoveryResult> _scanResults = [];
+BluetoothConnection? _bluetoothConnection;
+bool _scanning = false;
+
+Future<void> _startBluetoothScan() async {
+  setState(() {
+    _scanResults.clear();
+    _scanning = true;
+  });
+
+  try {
+    _bluetoothConnection?.dispose();
+    _bluetoothConnection = null;
+
+    BluetoothConnection.toAddress(null); // cleanup any previous
+
+    FlutterBluetoothSerial.instance.startDiscovery().listen((r) {
+      setState(() {
+        final alreadyExists = _scanResults.any((e) => e.device.address == r.device.address);
+        if (!alreadyExists) _scanResults.add(r);
+      });
+    }).onDone(() {
+      setState(() => _scanning = false);
+    });
+  } catch (e) {
+    print("Bluetooth scan error: $e");
+    setState(() => _scanning = false);
+  }
+}
+
 
   Widget buildWifiSetup() {
     return Card(
@@ -1072,6 +1118,13 @@ bool get _isAppActive {
               await FirebaseAuth.instance.signOut();
             },
           ),
+          IconButton(
+  icon: Icon(Icons.bluetooth_searching),
+  tooltip: "Scan Bluetooth",
+  onPressed: () {
+    _startBluetoothScan();
+  },
+),
         ],
       ),
       body: loading
@@ -1081,6 +1134,36 @@ bool get _isAppActive {
               child: Column(
                 children: [
                   buildLiveData(),
+                  if (_scanning) ...[
+                  const SizedBox(height: 16),
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 10),
+                  const Text(
+                    "Scanning for devices...",
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ] else if (_scanResults.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  const Text(
+                    "Select a Bluetooth device:",
+                    style: TextStyle(color: Colors.tealAccent),
+                  ),
+                  const SizedBox(height: 10),
+                  // build a List of devices
+                  for (var result in _scanResults)
+                    ListTile(
+                      leading: const Icon(Icons.bluetooth, color: Colors.tealAccent),
+                      title: Text(
+                        result.device.name ?? "Unknown",
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                      subtitle: Text(
+                        result.device.address,
+                        style: const TextStyle(color: Colors.white70),
+                      ),
+                      onTap: () => _connectToDevice(result.device),
+                    ),
+                ],
                   if (showSettings) buildSettings(),
                   if (showWifiSetup) buildWifiSetup(),
                   const SizedBox(height: 16),
