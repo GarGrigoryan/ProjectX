@@ -16,25 +16,8 @@ import 'background_service.dart'; // add this
 import 'package:flutter/foundation.dart';
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:android_intent_plus/flag.dart';
-import 'dart:typed_data';
-import 'package:flutter_blue/flutter_blue.dart';
-
-FlutterBlue flutterBlue = FlutterBlue.instance;
-
-// Start scanning for 5 seconds
-void startScan() {
-  flutterBlue.startScan(timeout: Duration(seconds: 5));
-
-  flutterBlue.scanResults.listen((results) {
-    for (ScanResult r in results) {
-      print('Found device: ${r.device.name} (${r.device.id})');
-      // Here you can update your UI list of devices to show this device
-    }
-  });
-
-  flutterBlue.stopScan();
-}
-
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';         // add
+import 'ble_service.dart';                                         // add
 
 
 // Notification channel setup
@@ -49,196 +32,6 @@ const AndroidNotificationChannel channel = AndroidNotificationChannel(
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
-
-
-class BluetoothDeviceListScreen extends StatefulWidget {
-  const BluetoothDeviceListScreen({Key? key}) : super(key: key);
-  @override
-  _BluetoothDeviceListScreenState createState() => _BluetoothDeviceListScreenState();
-}
-
-class _BluetoothDeviceListScreenState extends State<BluetoothDeviceListScreen> {
-  final FlutterBlue flutterBlue = FlutterBlue.instance;
-  List<ScanResult> devices = [];
-  bool isDiscovering = false;
-
-  bool _notificationActive = false;
-  DateTime? _lastUpdateTime;
-  BluetoothDevice? _selectedDevice;
-  bool showWifiSetup = false;
-  bool showSettings = false;
-
-  late StreamSubscription<ScanReslut> _discoveryStreamSubscription;
-
-  @override
-  void initState() {
-    super.initState();
-    _requestPermissions();
-    startDiscovery();
-    requestBlePermissions().then((_) {
-      startScan();
-    });
-  }
-
-  void startDiscovery() {
-    setState(() {
-      devices.clear();
-      isDiscovering = true;
-    });
-
-    _discoveryStreamSubscription =
-        FlutterBluetoothSerial.instance.startDiscovery().listen((result) {
-      setState(() {
-        final existingIndex = devices.indexWhere((d) => d.device.id.id == result.device.id.id);
-        if (existingIndex >= 0) {
-          devices[existingIndex] = result;
-        } else {
-          devices.add(result);
-        }
-      });
-    });
-
-    _discoveryStreamSubscription.onDone(() {
-      setState(() {
-        isDiscovering = false;
-      });
-    });
-  }
-
-
-  Future<void> _requestPermissions() async {
-  if (Platform.isAndroid) {
-    await [
-      Permission.bluetoothScan,
-      Permission.bluetoothConnect,
-      Permission.locationWhenInUse,
-    ].request();
-  }
-}
-
-  void startScan() {
-    scanResults.clear();  // Clear previous results if needed
-    flutterBlue.startScan(timeout: Duration(seconds: 5));
-    
-    flutterBlue.scanResults.listen((results) {
-      setState(() {
-        scanResults = results;
-      });
-    });
-  }
-
-
-  @override
-  void dispose() {
-    _discoveryStreamSubscription.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-  title: Row(
-    children: [
-      const Text('Air Analyzer'),
-      const SizedBox(width: 8),
-      Builder(
-        builder: (context) {
-          if (_notificationActive) {
-            return Tooltip(
-              message: 'Device offline since ${timeago.format(_lastUpdateTime!)}',
-              child: const Icon(Icons.wifi_off, color: Colors.red),
-            );
-          } else if (_lastUpdateTime != null) {
-            return Tooltip(
-              message: 'Last update: ${timeago.format(_lastUpdateTime!)}',
-              child: const Icon(Icons.wifi, color: Colors.green),
-            );
-          }
-          return const Icon(Icons.wifi, color: Colors.grey);
-        },
-      ),
-    ],
-  ),
-  actions: [
-    IconButton(
-      icon: const Icon(Icons.bluetooth_searching),
-      tooltip: "Scan Bluetooth Devices",
-      onPressed: () async {
-        final BluetoothDevice? device = await Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const BluetoothDeviceListScreen()),
-        );
-        if (device != null) {
-          setState(() {
-            _selectedDevice = device;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Selected device: ${device.name ?? device.id.id}')),
-          );
-        }
-      },
-    ),
-    IconButton(
-      icon: Icon(showWifiSetup ? Icons.wifi_off : Icons.wifi),
-      tooltip: showWifiSetup ? "Hide Wi-Fi Setup" : "Show Wi-Fi Setup",
-      onPressed: () {
-        setState(() {
-          showWifiSetup = !showWifiSetup;
-        });
-      },
-    ),
-    IconButton(
-      icon: Icon(showSettings ? Icons.visibility_off : Icons.settings),
-      tooltip: showSettings ? "Hide Settings" : "Show Settings",
-      onPressed: () {
-        setState(() {
-          showSettings = !showSettings;
-        });
-      },
-    ),
-    IconButton(
-      icon: const Icon(Icons.logout),
-      tooltip: "Logout",
-      onPressed: () async {
-        await FirebaseAuth.instance.signOut();
-      },
-    ),
-  ],
-),
-
-      body: ListView.builder(
-        itemCount: devices.length,
-        itemBuilder: (context, index) {
-          final device = devices[index].device;
-          return ListTile(
-            leading: const Icon(Icons.bluetooth),
-            title: Text(device.name ?? 'Unknown device'),
-            subtitle: Text(device.id.id),
-            trailing: devices[index].rssi != null ? Text('RSSI: ${devices[index].rssi}') : null,
-            onTap: () {
-              Navigator.of(context).pop(device);
-            },
-          );
-        },
-      ),
-      body:ListView.builder(
-  itemCount: scanResults.length,
-  itemBuilder: (context, index) {
-    final device = scanResults[index].device;
-    return ListTile(
-      title: Text(device.name.isNotEmpty ? device.name : device.id.toString()),
-      subtitle: Text(device.id.toString()),
-      onTap: () {
-        // Connect to device or save selection
-      },
-    );
-  },
-);
-
-    );
-  }
-}
-
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -478,14 +271,17 @@ class _ProjectXHomeState extends State<ProjectXHome> with WidgetsBindingObserver
   // Timers
   Timer? _autoRefreshTimer;
   Timer? _connectionCheckTimer;
-  BluetoothConnection? _bluetoothConnection;
-  BluetoothDevice? _espDevice;
-  BluetoothDevice? _selectedDevice;
   
   // Database and connectivity
   final DatabaseReference dbRef = FirebaseDatabase.instance.ref();
   final Connectivity _connectivity = Connectivity();
   StreamSubscription<ConnectivityResult>? _connectivitySubscription;
+  final BleService _ble = BleService.instance;
+
+  bool _bleScanning = false;
+  List<ScanResult> _scanResults = [];
+  BluetoothDevice? _connectedDevice;
+
   
   // Device ID
   final String deviceId = "dAxXdU5e4PVqpvre1iXZWIWRl5k1";
@@ -535,62 +331,19 @@ class _ProjectXHomeState extends State<ProjectXHome> with WidgetsBindingObserver
     });
   }
 
-  Future<void> _connectToEspBluetooth() async {
-  if (_selectedDevice == null) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Please select your AirAnalyzer device first.")),
-    );
-    return;
-  }
-
-  try {
-    _bluetoothConnection = await BluetoothConnection.toAddress(_selectedDevice!.id.id);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Connected to ${_selectedDevice!.name ?? _selectedDevice!.id.id}")),
-    );
-  } catch (e) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Bluetooth connection failed: $e")),
-    );
-  }
-}
-
-Future<void> _sendWifiCredentialsViaBluetooth(String ssid, String password) async {
-  if (_bluetoothConnection == null || !_bluetoothConnection!.isConnected) {
-    await _connectToEspBluetooth();
-    if (_bluetoothConnection == null || !_bluetoothConnection!.isConnected) {
-      return;
-    }
-  }
-
-  String data = '$ssid,$password\n'; // ESP32 expects SSID,password newline separated
-  try {
-    _bluetoothConnection!.output.add(Uint8List.fromList(data.codeUnits));
-    await _bluetoothConnection!.output.allSent;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Wi-Fi credentials sent via Bluetooth")),
-    );
-    ssidController.clear();
-    passController.clear();
-  } catch (e) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Failed to send data: $e")),
-    );
-  }
-}
-
   Future<void> _requestPermissions() async {
-    if (Platform.isAndroid) {
-      await [
-        Permission.notification,
-        Permission.ignoreBatteryOptimizations,
-      ].request();
-      await Permission.bluetoothScan.request();
-await Permission.bluetoothConnect.request();
-await Permission.locationWhenInUse.request();  // Needed on some devices for BT scanning
-
-    }
+  if (Platform.isAndroid) {
+    await [
+      Permission.bluetooth,
+      Permission.bluetoothScan,
+      Permission.bluetoothConnect,
+      Permission.locationWhenInUse,
+      Permission.notification,
+      Permission.ignoreBatteryOptimizations,
+    ].request();
   }
+}
+
 
   void _setupConnectivityListener() {
     _connectivitySubscription = _connectivity.onConnectivityChanged.listen((result) {
@@ -629,8 +382,6 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
     _clearAllNotifications();
     ssidController.dispose();
     passController.dispose();
-    _bluetoothConnection?.dispose();
-    _bluetoothConnection = null;
     super.dispose();
   }
 
@@ -821,21 +572,6 @@ bool get _isAppActive {
   }
 }
 
-Future<void> _connectToDevice(BluetoothDevice device) async {
-  try {
-    final connection = await BluetoothConnection.toAddress(device.id.id);
-    print('Connected to ${device.name}');
-    setState(() {
-      _bluetoothConnection = connection;
-      status = 'Connected to ${device.name}';
-    });
-  } catch (e) {
-    print("Connection failed: $e");
-    setState(() => status = 'Failed to connect');
-  }
-}
-
-
   void _setupFirebaseListeners() {
     // Settings listener
     dbRef.child('devices/$deviceId/settings').onValue.listen((event) {
@@ -905,33 +641,60 @@ Future<void> _connectToDevice(BluetoothDevice device) async {
     }
   }
 
-  List<BluetoothDiscoveryResult> _scanResults = [];
-bool _scanning = false;
-
-Future<void> _startBluetoothScan() async {
-  setState(() {
-    _scanResults.clear();
-    _scanning = true;
-  });
-
+  Future<void> _startBleScan() async {
+  setState(() { _bleScanning = true; });
+  _scanResults = [];
   try {
-    _bluetoothConnection?.dispose();
-    _bluetoothConnection = null;
-
-    BluetoothConnection.toAddress(null); // cleanup any previous
-
-    FlutterBluetoothSerial.instance.startDiscovery().listen((r) {
+    _ble.scan(timeout: Duration(seconds: 5)).listen((scanResult) {
+      if (!mounted) return;
       setState(() {
-        final alreadyExists = _scanResults.any((e) => e.device.id.id == r.device.id.id);
-        if (!alreadyExists) _scanResults.add(r);
+        // Add or update scan result
+        final index = _scanResults.indexWhere((r) => r.device.id == scanResult.device.id);
+        if (index == -1) {
+          _scanResults.add(scanResult);
+        } else {
+          _scanResults[index] = scanResult;
+        }
       });
-    }).onDone(() {
-      setState(() => _scanning = false);
     });
   } catch (e) {
-    print("Bluetooth scan error: $e");
-    setState(() => _scanning = false);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Scan error: $e')));
+  } finally {
+    if (mounted) setState(() { _bleScanning = false; });
   }
+}
+
+
+
+void _showBlePicker() {
+  showModalBottomSheet(
+    context: context,
+    builder: (_) => ListView(
+      children: _scanResults.map((r) {
+        final name = r.device.name.isNotEmpty ? r.device.name : r.device.id.id;
+        return ListTile(
+          leading: const Icon(Icons.bluetooth),
+          title: Text(name),
+          subtitle: Text(r.rssi.toString() + ' dBm'),
+          onTap: () async {
+            Navigator.pop(context);
+            try {
+              await _ble.connect(r.device);
+              if (!mounted) return;
+              setState(() => _connectedDevice = r.device);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Connected to $name')),
+              );
+            } catch (e) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Connection failed: $e')),
+              );
+            }
+          },
+        );
+      }).toList(),
+    ),
+  );
 }
 
 
@@ -964,15 +727,33 @@ Future<void> _startBluetoothScan() async {
               icon: const Icon(Icons.wifi),
               label: const Text("Send Wi-Fi Credentials"),
               onPressed: () async {
-  if (ssidController.text.isEmpty || passController.text.isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Please fill both SSID and Password")),
-    );
-    return;
-  }
-  await _sendWifiCredentialsViaBluetooth(ssidController.text.trim(), passController.text.trim());
-},
-
+                final ssid = ssidController.text.trim();
+                final pass = passController.text.trim();
+                if (ssid.isEmpty || pass.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Please fill both SSID and Password')),
+                  );
+                  return;
+                }
+                if (!_ble.isConnected) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Not connected to any BLE device')),
+                  );
+                  return;
+                }
+                try {
+                  await _ble.sendCredentials(ssid, pass);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Credentials sent over BLE')),
+                  );
+                  ssidController.clear();
+                  passController.clear();
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('BLE error: $e')),
+                  );
+                }
+              },
             ),
           ],
         ),
@@ -1147,6 +928,13 @@ Future<void> _startBluetoothScan() async {
                 return const Icon(Icons.wifi, color: Colors.grey);
               },
             ),
+            if (_connectedDevice != null) ...[
+              const SizedBox(width: 8),
+              Tooltip(
+                message: 'BLE: connected to ${_connectedDevice!.name}',
+                child: const Icon(Icons.bluetooth_connected, color: Colors.blue),
+              ),
+            ],
           ],
         ),
         actions: [
@@ -1176,12 +964,10 @@ Future<void> _startBluetoothScan() async {
             },
           ),
           IconButton(
-  icon: Icon(Icons.bluetooth_searching),
-  tooltip: "Scan Bluetooth",
-  onPressed: () {
-    _startBluetoothScan();
-  },
-),
+          icon: Icon(Icons.bluetooth_searching),
+          tooltip: 'Scan BLE',
+          onPressed: _bleScanning ? null : _startBleScan,
+          ),
         ],
       ),
       body: loading
@@ -1191,36 +977,6 @@ Future<void> _startBluetoothScan() async {
               child: Column(
                 children: [
                   buildLiveData(),
-                  if (_scanning) ...[
-                  const SizedBox(height: 16),
-                  const CircularProgressIndicator(),
-                  const SizedBox(height: 10),
-                  const Text(
-                    "Scanning for devices...",
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ] else if (_scanResults.isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  const Text(
-                    "Select a Bluetooth device:",
-                    style: TextStyle(color: Colors.tealAccent),
-                  ),
-                  const SizedBox(height: 10),
-                  // build a List of devices
-                  for (var result in _scanResults)
-                    ListTile(
-                      leading: const Icon(Icons.bluetooth, color: Colors.tealAccent),
-                      title: Text(
-                        result.device.name ?? "Unknown",
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                      subtitle: Text(
-                        result.device.id.id,
-                        style: const TextStyle(color: Colors.white70),
-                      ),
-                      onTap: () => _connectToDevice(result.device),
-                    ),
-                ],
                   if (showSettings) buildSettings(),
                   if (showWifiSetup) buildWifiSetup(),
                   const SizedBox(height: 16),

@@ -40,8 +40,7 @@ dependencies:
   android_alarm_manager_plus: ^2.1.0  # For periodic checks
   connectivity_plus: ^3.0.3
   android_intent_plus: ^3.0.2
-  flutter_blue: ^0.8.0  # or latest version from https://pub.dev/packages/flutter_blue
-
+  flutter_blue_plus: ^1.21.7  # or the latest shown on pub.dev
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
