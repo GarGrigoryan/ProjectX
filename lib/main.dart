@@ -16,7 +16,7 @@ import 'background_service.dart'; // add this
 import 'package:flutter/foundation.dart';
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:android_intent_plus/flag.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';         // add
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'ble_service.dart';                                         // add
 
 

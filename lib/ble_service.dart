@@ -1,10 +1,14 @@
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'dart:async';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+
+
 
 class BleService {
   BleService._privateConstructor();
   static final BleService instance = BleService._privateConstructor();
 
-  final FlutterBluePlus _ble = FlutterBluePlus.instance;
+  final FlutterBluePlus _ble = FlutterBluePlus.instance();
 
   StreamSubscription<List<ScanResult>>? _scanSubscription;
   List<ScanResult> _scanResults = [];
