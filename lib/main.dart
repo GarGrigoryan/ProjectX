@@ -16,8 +16,25 @@ import 'background_service.dart'; // add this
 import 'package:flutter/foundation.dart';
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:android_intent_plus/flag.dart';
-import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
 import 'dart:typed_data';
+import 'package:flutter_blue/flutter_blue.dart';
+
+FlutterBlue flutterBlue = FlutterBlue.instance;
+
+// Start scanning for 5 seconds
+void startScan() {
+  flutterBlue.startScan(timeout: Duration(seconds: 5));
+
+  flutterBlue.scanResults.listen((results) {
+    for (ScanResult r in results) {
+      print('Found device: ${r.device.name} (${r.device.id})');
+      // Here you can update your UI list of devices to show this device
+    }
+  });
+
+  flutterBlue.stopScan();
+}
+
 
 
 // Notification channel setup
@@ -36,13 +53,13 @@ final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
 
 class BluetoothDeviceListScreen extends StatefulWidget {
   const BluetoothDeviceListScreen({Key? key}) : super(key: key);
-
   @override
   _BluetoothDeviceListScreenState createState() => _BluetoothDeviceListScreenState();
 }
 
 class _BluetoothDeviceListScreenState extends State<BluetoothDeviceListScreen> {
-  List<BluetoothDiscoveryResult> devices = [];
+  final FlutterBlue flutterBlue = FlutterBlue.instance;
+  List<ScanResult> devices = [];
   bool isDiscovering = false;
 
   bool _notificationActive = false;
@@ -51,13 +68,16 @@ class _BluetoothDeviceListScreenState extends State<BluetoothDeviceListScreen> {
   bool showWifiSetup = false;
   bool showSettings = false;
 
-  late StreamSubscription<BluetoothDiscoveryResult> _discoveryStreamSubscription;
+  late StreamSubscription<ScanReslut> _discoveryStreamSubscription;
 
   @override
   void initState() {
     super.initState();
     _requestPermissions();
     startDiscovery();
+    requestBlePermissions().then((_) {
+      startScan();
+    });
   }
 
   void startDiscovery() {
@@ -69,7 +89,7 @@ class _BluetoothDeviceListScreenState extends State<BluetoothDeviceListScreen> {
     _discoveryStreamSubscription =
         FlutterBluetoothSerial.instance.startDiscovery().listen((result) {
       setState(() {
-        final existingIndex = devices.indexWhere((d) => d.device.address == result.device.address);
+        final existingIndex = devices.indexWhere((d) => d.device.id.id == result.device.id.id);
         if (existingIndex >= 0) {
           devices[existingIndex] = result;
         } else {
@@ -85,6 +105,7 @@ class _BluetoothDeviceListScreenState extends State<BluetoothDeviceListScreen> {
     });
   }
 
+
   Future<void> _requestPermissions() async {
   if (Platform.isAndroid) {
     await [
@@ -94,6 +115,18 @@ class _BluetoothDeviceListScreenState extends State<BluetoothDeviceListScreen> {
     ].request();
   }
 }
+
+  void startScan() {
+    scanResults.clear();  // Clear previous results if needed
+    flutterBlue.startScan(timeout: Duration(seconds: 5));
+    
+    flutterBlue.scanResults.listen((results) {
+      setState(() {
+        scanResults = results;
+      });
+    });
+  }
+
 
   @override
   void dispose() {
@@ -140,7 +173,7 @@ class _BluetoothDeviceListScreenState extends State<BluetoothDeviceListScreen> {
             _selectedDevice = device;
           });
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Selected device: ${device.name ?? device.address}')),
+            SnackBar(content: Text('Selected device: ${device.name ?? device.id.id}')),
           );
         }
       },
@@ -180,7 +213,7 @@ class _BluetoothDeviceListScreenState extends State<BluetoothDeviceListScreen> {
           return ListTile(
             leading: const Icon(Icons.bluetooth),
             title: Text(device.name ?? 'Unknown device'),
-            subtitle: Text(device.address),
+            subtitle: Text(device.id.id),
             trailing: devices[index].rssi != null ? Text('RSSI: ${devices[index].rssi}') : null,
             onTap: () {
               Navigator.of(context).pop(device);
@@ -188,6 +221,20 @@ class _BluetoothDeviceListScreenState extends State<BluetoothDeviceListScreen> {
           );
         },
       ),
+      body:ListView.builder(
+  itemCount: scanResults.length,
+  itemBuilder: (context, index) {
+    final device = scanResults[index].device;
+    return ListTile(
+      title: Text(device.name.isNotEmpty ? device.name : device.id.toString()),
+      subtitle: Text(device.id.toString()),
+      onTap: () {
+        // Connect to device or save selection
+      },
+    );
+  },
+);
+
     );
   }
 }
@@ -497,9 +544,9 @@ class _ProjectXHomeState extends State<ProjectXHome> with WidgetsBindingObserver
   }
 
   try {
-    _bluetoothConnection = await BluetoothConnection.toAddress(_selectedDevice!.address);
+    _bluetoothConnection = await BluetoothConnection.toAddress(_selectedDevice!.id.id);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Connected to ${_selectedDevice!.name ?? _selectedDevice!.address}")),
+      SnackBar(content: Text("Connected to ${_selectedDevice!.name ?? _selectedDevice!.id.id}")),
     );
   } catch (e) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -776,7 +823,7 @@ bool get _isAppActive {
 
 Future<void> _connectToDevice(BluetoothDevice device) async {
   try {
-    final connection = await BluetoothConnection.toAddress(device.address);
+    final connection = await BluetoothConnection.toAddress(device.id.id);
     print('Connected to ${device.name}');
     setState(() {
       _bluetoothConnection = connection;
@@ -875,7 +922,7 @@ Future<void> _startBluetoothScan() async {
 
     FlutterBluetoothSerial.instance.startDiscovery().listen((r) {
       setState(() {
-        final alreadyExists = _scanResults.any((e) => e.device.address == r.device.address);
+        final alreadyExists = _scanResults.any((e) => e.device.id.id == r.device.id.id);
         if (!alreadyExists) _scanResults.add(r);
       });
     }).onDone(() {
@@ -1168,7 +1215,7 @@ Future<void> _startBluetoothScan() async {
                         style: const TextStyle(color: Colors.white),
                       ),
                       subtitle: Text(
-                        result.device.address,
+                        result.device.id.id,
                         style: const TextStyle(color: Colors.white70),
                       ),
                       onTap: () => _connectToDevice(result.device),
