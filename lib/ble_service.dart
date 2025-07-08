@@ -1,74 +1,119 @@
+// lib/ble_service.dart
+import 'dart:convert';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-import 'dart:async';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-
-
 
 class BleService {
-  BleService._privateConstructor();
-  static final BleService instance = BleService._privateConstructor();
+  // --- singleton boilerplate ---
+  static final BleService _instance = BleService._internal();
+  factory BleService() => _instance;
+  BleService._internal();
+  // --------------------------------
 
-  final FlutterBluePlus _ble = FlutterBluePlus.instance();
+  BluetoothDevice? _connectedDevice;
+  BluetoothCharacteristic? _writer;
 
-  StreamSubscription<List<ScanResult>>? _scanSubscription;
-  List<ScanResult> _scanResults = [];
+bool get isConnected => _writer != null;
 
-  List<ScanResult> get scanResults => _scanResults;
+  /// Start scanning; each event is a **single** ScanResult.
+  Stream<ScanResult> scan({Duration timeout = const Duration(seconds: 5)}) {
+    FlutterBluePlus.startScan(timeout: timeout);
+    // scanResults is Stream<List<ScanResult>>; flatten to Stream<ScanResult>
+    return FlutterBluePlus.scanResults.expand((list) => list);
+  }
 
-  Stream<List<ScanResult>> scan({Duration timeout = const Duration(seconds: 5)}) {
-    _scanResults = [];
-    return _ble.scan(timeout: timeout).map((scanResult) {
-      _scanResults.add(scanResult);
-      return _scanResults;
-    });
+  Future<void> connect(BluetoothDevice d) async {
+    await FlutterBluePlus.stopScan();
+    _connectedDevice = d;
+    await d.connect(timeout: const Duration(seconds: 10), autoConnect: false);
+    await _discoverWriter();
   }
 
   Future<void> stopScan() async {
-    await _ble.stopScan();
-    _scanSubscription?.cancel();
-  }
+  await FlutterBluePlus.stopScan();
+}
 
-  Future<void> connect(BluetoothDevice device) async {
-    _connectedDevice = device;
-    await device.connect();
-    List<BluetoothService> services = await device.discoverServices();
-    for (var service in services) {
-      if (service.uuid == _serviceUuid) {
-        for (var characteristic in service.characteristics) {
-          if (characteristic.uuid == _writeUuid) {
-            _writeCharacteristic = characteristic;
-            break;
-          }
+
+  /// Probe every writable characteristic until one actually accepts a write.
+/// This lets us work with *any* ESP32 firmware, no UUID hard‑coding needed.
+Future<void> _discoverWriter() async {
+  if (_connectedDevice == null) throw Exception('No device');
+
+  final services = await _connectedDevice!.discoverServices();
+
+  for (final s in services) {
+    for (final c in s.characteristics) {
+      if (!(c.properties.write || c.properties.writeWithoutResponse)) continue;
+
+      // --- try a 1‑byte probe ---
+      try {
+        final probe = [0x00];
+
+        if (c.properties.write) {
+          await c.write(probe, withoutResponse: false);
+          _writer = c;
+          print('✅ Found writer via write‑with‑response: ${c.uuid}');
+          return;
+        } else if (c.properties.writeWithoutResponse) {
+          await c.write(probe, withoutResponse: true);
+          _writer = c;
+          print('✅ Found writer via write‑no‑response: ${c.uuid}');
+          return;
         }
+      } catch (e) {
+        // write failed → this char isn’t our guy, keep searching
+        print('↩︎  ${c.uuid} rejected probe ($e)');
       }
     }
   }
 
+  throw Exception('No writable characteristic accepted the probe (all gave 0x13)');
+}
+
+
+ Future<void> sendCredentials(String ssid, String pass) async {
+  if (_connectedDevice == null) throw Exception('BLE not connected');
+
+  final ssidBytes = utf8.encode(ssid);
+  final passBytes = utf8.encode(pass);
+
+  BluetoothCharacteristic? ssidChar;
+  BluetoothCharacteristic? passChar;
+
+  // Find SSID and PASS characteristics by partial UUID match
+  final services = await _connectedDevice!.discoverServices();
+  for (final service in services) {
+    for (final c in service.characteristics) {
+      final uuid = c.uuid.toString().toLowerCase();
+      if (uuid.startsWith('6e400002')) {
+        ssidChar = c;
+      } else if (uuid.startsWith('6e400003')) {
+        passChar = c;
+      }
+    }
+  }
+
+  if (ssidChar == null || passChar == null) {
+    throw Exception('SSID or PASS characteristic not found');
+  }
+
+  // Write SSID
+  await ssidChar.write(ssidBytes, withoutResponse: true);
+  await Future.delayed(const Duration(milliseconds: 100)); // slight delay
+
+  // Write PASS
+  await passChar.write(passBytes, withoutResponse: true);
+  await Future.delayed(const Duration(milliseconds: 100));
+
+  print("[BLE] Credentials sent successfully");
+}
+
+
+
+
   Future<void> disconnect() async {
-    if (_connectedDevice != null) {
-      await _connectedDevice!.disconnect();
-      _connectedDevice = null;
-      _writeCharacteristic = null;
-    }
+    await _connectedDevice?.disconnect();
+    _connectedDevice = null;
+    _writer = null;
   }
 
-  bool get isConnected {
-    if (_connectedDevice == null) return false;
-    return _connectedDevice!.state == BluetoothDeviceState.connected;
-  }
-
-  Future<void> sendData(List<int> data) async {
-    if (_writeCharacteristic == null) {
-      throw Exception('No writable characteristic found!');
-    }
-    await _writeCharacteristic!.write(data, withoutResponse: true);
-  }
-
-  Future<void> sendCredentials(String ssid, String password) async {
-    final data = <int>[];
-    data.addAll(ssid.codeUnits);
-    data.add(0); // null separator
-    data.addAll(password.codeUnits);
-    await sendData(data);
-  }
 }

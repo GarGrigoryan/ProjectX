@@ -276,7 +276,7 @@ class _ProjectXHomeState extends State<ProjectXHome> with WidgetsBindingObserver
   final DatabaseReference dbRef = FirebaseDatabase.instance.ref();
   final Connectivity _connectivity = Connectivity();
   StreamSubscription<ConnectivityResult>? _connectivitySubscription;
-  final BleService _ble = BleService.instance;
+  final BleService _ble = BleService();
 
   bool _bleScanning = false;
   List<ScanResult> _scanResults = [];
@@ -642,59 +642,89 @@ bool get _isAppActive {
   }
 
   Future<void> _startBleScan() async {
-  setState(() { _bleScanning = true; });
-  _scanResults = [];
-  try {
-    _ble.scan(timeout: Duration(seconds: 5)).listen((scanResult) {
-      if (!mounted) return;
-      setState(() {
-        // Add or update scan result
-        final index = _scanResults.indexWhere((r) => r.device.id == scanResult.device.id);
-        if (index == -1) {
-          _scanResults.add(scanResult);
-        } else {
-          _scanResults[index] = scanResult;
-        }
-      });
-    });
-  } catch (e) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Scan error: $e')));
-  } finally {
-    if (mounted) setState(() { _bleScanning = false; });
-  }
+  if (_bleScanning) return;                 // already scanning
+  setState(() { _bleScanning = true; _scanResults.clear(); });
+
+  late StreamSubscription<ScanResult> sub;
+  bool sheetOpen = false;
+
+  sub = _ble.scan(
+    timeout: const Duration(seconds: 6),    // you can tweak
+    // allowDuplicates: true,               // uncomment if ESP advertises slowly
+  ).listen((result) {
+    if (!mounted) return;
+
+    // Add/update result in list
+    final idx = _scanResults.indexWhere((r) => r.device.id == result.device.id);
+    idx == -1 ? _scanResults.add(result) : _scanResults[idx] = result;
+
+    // Show sheet on first hit
+    if (!sheetOpen) {
+      sheetOpen = true;
+      _showBleSheet(sub);                   // pass the sub so we can cancel inside
+    } else {
+      setState(() {});                      // refresh UI if sheet already open
+    }
+  }, onDone: () {
+    if (mounted) setState(() => _bleScanning = false);
+  }, onError: (e) {
+    if (mounted) {
+      setState(() => _bleScanning = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Scan error: $e')),
+      );
+    }
+  });
 }
 
 
-
-void _showBlePicker() {
+void _showBleSheet(StreamSubscription<ScanResult> sub) {
   showModalBottomSheet(
     context: context,
-    builder: (_) => ListView(
-      children: _scanResults.map((r) {
-        final name = r.device.name.isNotEmpty ? r.device.name : r.device.id.id;
-        return ListTile(
-          leading: const Icon(Icons.bluetooth),
-          title: Text(name),
-          subtitle: Text(r.rssi.toString() + ' dBm'),
-          onTap: () async {
-            Navigator.pop(context);
-            try {
-              await _ble.connect(r.device);
-              if (!mounted) return;
-              setState(() => _connectedDevice = r.device);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Connected to $name')),
-              );
-            } catch (e) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Connection failed: $e')),
-              );
-            }
-          },
-        );
-      }).toList(),
+    isScrollControlled: true,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, mSet) => SizedBox(
+        height: 320,
+        child: _scanResults.isEmpty
+            ? const Center(child: CircularProgressIndicator())
+            : ListView.builder(
+                itemCount: _scanResults.length,
+                itemBuilder: (_, i) {
+                  final r = _scanResults[i];
+                  final name = r.device.name.isNotEmpty
+                      ? r.device.name
+                      : r.device.id.str; // .str instead of .id.id in v1.34
+                  return ListTile(
+                    leading: const Icon(Icons.bluetooth),
+                    title: Text(name),
+                    subtitle: Text('${r.rssi} dBm'),
+                    onTap: () async {
+                      Navigator.pop(ctx);
+                      await sub.cancel();               // stop listening
+                      await _ble.disconnect();          // clean any stale
+                      try {
+                        await _ble.connect(r.device);
+                        if (!mounted) return;
+                        setState(() => _connectedDevice = r.device);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Connected to $name')),
+                        );
+                      } catch (e) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Connect failed: $e')),
+                        );
+                      }
+                    },
+                  );
+                },
+              ),
+      ),
     ),
-  );
+  ).whenComplete(() async {
+    await sub.cancel();
+    await _ble.stopScan();
+    if (mounted) setState(() => _bleScanning = false);
+  });
 }
 
 
