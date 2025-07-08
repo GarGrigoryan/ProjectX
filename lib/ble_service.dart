@@ -107,9 +107,6 @@ Future<void> _discoverWriter() async {
   print("[BLE] Credentials sent successfully");
 }
 
-
-
-
   Future<void> disconnect() async {
     await _connectedDevice?.disconnect();
     _connectedDevice = null;
