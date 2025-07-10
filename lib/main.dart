@@ -42,6 +42,29 @@ void main() async {
   const initSettings = InitializationSettings(android: androidInit);
   await flutterLocalNotificationsPlugin.initialize(initSettings);
 
+// Check Wi-Fi connection before initializing background service
+final connectivityResult = await Connectivity().checkConnectivity();
+if (connectivityResult == ConnectivityResult.wifi) {
+  // Initialize background service
+  await Workmanager().initialize(
+    callbackDispatcher, // from background_service.dart
+    isInDebugMode: false,
+  );
+
+  await Workmanager().registerPeriodicTask(
+    "task_projectx_monitor",
+    "simplePeriodicTask",
+    frequency: Duration(minutes: 15),
+    initialDelay: Duration(minutes: 1),
+    existingWorkPolicy: ExistingWorkPolicy.keep,
+  );
+} else {
+  print("Wi-Fi connection not available. Background service not initialized.");
+}
+
+// Run the app
+runApp(ProjectXApp(flutterLocalNotificationsPlugin: flutterLocalNotificationsPlugin));
+
   // Initialize background service
   await Workmanager().initialize(
     callbackDispatcher, // from background_service.dart
@@ -71,6 +94,18 @@ Future<void> requestIgnoreBatteryOptimizations() async {
       );
       await intent.launch();
     }
+  }
+}
+
+Future<void> requestNotificationPermission() async {
+  if (await flutterLocalNotificationsPlugin
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.requestPermission() ??
+      false) {
+    print("Notification permission granted");
+  } else {
+    print("Notification permission denied");
   }
 }
 
