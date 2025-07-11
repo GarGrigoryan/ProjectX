@@ -10,7 +10,7 @@ void callbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
     WidgetsFlutterBinding.ensureInitialized();
 
-    // Initialize Firebase
+    // Initialize Firebase (safe if already initialized)
     try {
       await Firebase.initializeApp();
     } catch (e) {
@@ -27,8 +27,7 @@ void callbackDispatcher() {
 
     // Firebase Database
     const deviceId = 'dAxXdU5e4PVqpvre1iXZWIWRl5k1'; // Replace with dynamic if needed
-    final ref = FirebaseDatabase.instance
-        .ref('devices/$deviceId/sensors/timestamp');
+    final ref = FirebaseDatabase.instance.ref('devices/$deviceId/sensors/timestamp');
 
     final snapshot = await ref.get();
 
@@ -69,8 +68,24 @@ Future<void> _showNotification(
   FlutterLocalNotificationsPlugin notifications,
   String message,
 ) async {
+  const channelId = 'background_channel';
+
+  // Create notification channel (required on Android 8+)
+  const androidChannel = AndroidNotificationChannel(
+    channelId,
+    'Device Status',
+    description: 'Device status notifications',
+    importance: Importance.high,
+  );
+
+  final androidImplementation = notifications
+      .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+
+  await androidImplementation?.createNotificationChannel(androidChannel);
+
   const androidDetails = AndroidNotificationDetails(
-    'background_channel',
+    channelId,
     'Device Status',
     channelDescription: 'Device status notifications',
     importance: Importance.max,
